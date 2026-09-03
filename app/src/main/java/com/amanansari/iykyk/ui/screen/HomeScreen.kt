@@ -1,5 +1,10 @@
 package com.amanansari.iykyk.ui.screen
 
+import android.net.Uri
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -22,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,7 +40,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,11 +50,13 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.amanansari.iykyk.ui.component.SelectedVideoDialog
 import com.amanansari.iykyk.ui.theme.Background
 import com.amanansari.iykyk.ui.theme.IykykTheme
 import com.amanansari.iykyk.ui.theme.Primary
@@ -59,10 +67,11 @@ import com.amanansari.iykyk.ui.theme.SurfaceContainerMid
 import com.amanansari.iykyk.ui.theme.Tertiary
 import com.amanansari.iykyk.ui.theme.TextHighEmphasis
 import com.amanansari.iykyk.ui.theme.TextMidEmphasis
+import com.amanansari.iykyk.uriToFilename
 
 @Composable
 fun HomeScreen(
-    onChooseVideoClick: () -> Unit = {}
+    onVideoSelected: (Uri) -> Unit = {}
 ) {
 
     val cardShape = RoundedCornerShape(48.dp)
@@ -108,6 +117,51 @@ fun HomeScreen(
         animationSpec = tween(200),
         label = "buttonScale"
     )
+
+    var selectedUri by remember { mutableStateOf<Uri?>(null) }
+
+    /*
+    * Launches Android's system Photo Picker, filtered to videos only.
+    * No READ_MEDIA_VIDEO / storage permission needed - the picker grants
+    * temporary, scoped access to whatever the user selects.
+    * */
+
+    val context = LocalContext.current
+
+    val pickVideoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+
+        selectedUri = uri
+    }
+
+
+    selectedUri?.let { uri ->
+
+        val videoName = uriToFilename(
+            LocalContext.current,
+            uri
+        )
+
+        SelectedVideoDialog(
+            videoName = videoName ?: "Unknown video",
+            onCancel = {
+                selectedUri = null
+            },
+            onEdit = {
+                pickVideoLauncher.launch(
+                    PickVisualMediaRequest(
+                        ActivityResultContracts.PickVisualMedia.VideoOnly
+                    )
+                )
+            },
+            onProceed = {
+                onVideoSelected(uri)
+            }
+        )
+    }
+
+
 
     LazyColumn(
         modifier = Modifier
@@ -255,7 +309,11 @@ fun HomeScreen(
                     //> Choose Video button
 
                     Button(
-                        onClick = onChooseVideoClick,
+                        onClick = {
+                            pickVideoLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                            )
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp)
@@ -269,6 +327,7 @@ fun HomeScreen(
                             containerColor = Primary,
                             contentColor = TextHighEmphasis
                         ),
+
                         interactionSource = interactionSource,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
                     ) {
