@@ -18,6 +18,7 @@ import com.amanansari.iykyk.ui.component.TopBar
 import com.amanansari.iykyk.ui.screen.HomeScreen
 import com.amanansari.iykyk.ui.screen.ProcessingScreen
 import com.amanansari.iykyk.ui.theme.Background
+import androidx.core.net.toUri
 
 @Composable
 fun NavGraph(){
@@ -68,7 +69,7 @@ fun NavGraph(){
 
                 val uriStr = backStackEntry.toRoute<Processing>()
 
-                ProcessingScreen(uri = Uri.parse(uriStr.uri))
+                ProcessingScreen(uri = uriStr.uri.toUri())
             }
         }
 

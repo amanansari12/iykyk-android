@@ -18,6 +18,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -56,6 +57,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.amanansari.iykyk.ui.component.SelectedVideoDialog
 import com.amanansari.iykyk.ui.theme.Background
 import com.amanansari.iykyk.ui.theme.IykykTheme
@@ -67,11 +69,28 @@ import com.amanansari.iykyk.ui.theme.SurfaceContainerMid
 import com.amanansari.iykyk.ui.theme.Tertiary
 import com.amanansari.iykyk.ui.theme.TextHighEmphasis
 import com.amanansari.iykyk.ui.theme.TextMidEmphasis
+import com.amanansari.iykyk.ui.viewmodel.ProcessingViewModel
 import com.amanansari.iykyk.uriToFilename
+
 
 @Composable
 fun HomeScreen(
-    onVideoSelected: (Uri) -> Unit = {}
+    onVideoSelected: (Uri) -> Unit = {},
+    viewModel: ProcessingViewModel = hiltViewModel()
+){
+    HomeScreenContent(
+        onVideoSelected = onVideoSelected,
+        updateUri = { uri ->
+            viewModel.updateUri(uri)
+        },
+        selectedUri = viewModel.selectedUri
+    )
+}
+@Composable
+fun HomeScreenContent(
+    selectedUri : Uri?,
+    onVideoSelected: (Uri) -> Unit,
+    updateUri: (Uri?) -> Unit
 ) {
 
     val cardShape = RoundedCornerShape(48.dp)
@@ -118,21 +137,19 @@ fun HomeScreen(
         label = "buttonScale"
     )
 
-    var selectedUri by remember { mutableStateOf<Uri?>(null) }
+
 
     /*
     * Launches Android's system Photo Picker, filtered to videos only.
     * No READ_MEDIA_VIDEO / storage permission needed - the picker grants
     * temporary, scoped access to whatever the user selects.
-    * */
-
-    val context = LocalContext.current
+    */
+    
 
     val pickVideoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
-
-        selectedUri = uri
+        updateUri(uri)
     }
 
 
@@ -146,7 +163,7 @@ fun HomeScreen(
         SelectedVideoDialog(
             videoName = videoName ?: "Unknown video",
             onCancel = {
-                selectedUri = null
+                updateUri(null)
             },
             onEdit = {
                 pickVideoLauncher.launch(
@@ -171,13 +188,14 @@ fun HomeScreen(
     ) {
 
         item {
-            Spacer(modifier = Modifier.height(25.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             Text(
                 text = "Find Everyone in Your Video.",
                 fontSize = 29.sp,
                 fontWeight = FontWeight.Bold,
-                color = TextHighEmphasis
+                color = TextHighEmphasis,
+                lineHeight = 38.sp
             )
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -329,7 +347,7 @@ fun HomeScreen(
                         ),
 
                         interactionSource = interactionSource,
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                        contentPadding = PaddingValues(0.dp)
                     ) {
 
                         Row(
@@ -507,6 +525,7 @@ fun HomeScreen(
         }
     }
 }
+
 
 @Composable
 private fun HowItWorksItem(

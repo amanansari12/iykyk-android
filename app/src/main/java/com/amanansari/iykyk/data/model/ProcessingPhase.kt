@@ -1,0 +1,13 @@
+package com.amanansari.iykyk.data.model
+
+enum class ProcessingPhase {
+    METADATA_EXTRACTION,
+    FRAME_EXTRACTION,
+    FACE_DETECTION,
+    FACE_EMBEDDING,
+    CLUSTERING,
+    APPEARANCE_COUNTING,
+    BEST_SHOT_SELECTION,
+    COLLAGE_GENERATION,
+    COMPLETED
+}

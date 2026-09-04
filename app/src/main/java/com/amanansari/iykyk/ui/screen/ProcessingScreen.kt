@@ -11,14 +11,30 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.amanansari.iykyk.ui.viewmodel.ProcessingViewModel
+
 
 @Composable
 fun ProcessingScreen(
-    uri: Uri
+    uri: Uri,
+    viewModel: ProcessingViewModel = hiltViewModel()
 ){
+
+    LaunchedEffect(uri) {
+        viewModel.updateUri(uri)
+        viewModel.startProcessing()
+    }
+
+    ProcessingScreenContent()
+}
+
+@Composable
+fun ProcessingScreenContent(){
     Column(
         modifier = Modifier
             .fillMaxSize()
