@@ -1,5 +1,6 @@
 package com.amanansari.iykyk.ui.viewmodel
 
+import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.getValue
@@ -20,6 +21,7 @@ import javax.inject.Inject
 @HiltViewModel
 class ProcessingViewModel @Inject constructor(
     val processingRepository: ProcessingRepository
+
 ) : ViewModel() {
 
     var openDialog by mutableStateOf(false)
@@ -33,6 +35,7 @@ class ProcessingViewModel @Inject constructor(
 
     fun updateUri(uri: Uri?){
         this.selectedUri = uri
+        openDialog = uri != null
     }
 
     fun onDialogConfirm() {
@@ -42,7 +45,17 @@ class ProcessingViewModel @Inject constructor(
 
 
 
+    /**
+     * Starting the Video Processing Steps
+     * Phase 1 - Metadata Extraction
+     * Phase 2 - Frame Extraction - Every 200ms
+     * Phase 3 - Face Detection
+     */
+
     var videoMetadata: VideoMetadata? = null
+        private set
+
+    var extractedFrames: List<Bitmap> = emptyList()
         private set
 
 
@@ -62,7 +75,7 @@ class ProcessingViewModel @Inject constructor(
             )
 
             try{
-
+                //> Phase 1 - Metadata Extraction
                 Log.d("ProcessingViewModel", "Extracting Metadata $processingUiState" )
                 videoMetadata = withContext(Dispatchers.IO) {
                     processingRepository.getVideoMetadata(
@@ -94,20 +107,118 @@ class ProcessingViewModel @Inject constructor(
                 )
 
                 Log.d("ProcessingViewModel", "Extracted Metadata $videoMetadata" )
+
+                //> Phase 1 - Metadata Extraction Complete
+
+                //> Phase 2 - Frame Extraction
+
+                val metadata = videoMetadata ?: return@launch
+
+                processingUiState = ProcessingUiState(
+                    phase = ProcessingPhase.FRAME_EXTRACTION,
+                    progress = 0f,
+                    message = "Preparing frame extraction...",
+                    isProcessing = true
+                )
+
+                extractedFrames = withContext(Dispatchers.IO) {
+                    processingRepository.extractFrames(
+                        uri = uri,
+                        durationMs = metadata.durationMs,
+                        intervalMs = 200L,
+                        onProgress = { progress, message ->
+
+                            processingUiState = processingUiState.copy(
+                                progress = progress,
+                                message = message
+                            )
+
+                            Log.d(
+                                "ProcessingViewModel",
+                                "Frame Progress: $progress, Message: $message"
+                            )
+                        }
+                    )
+                }
+
+                //> Phase 2 - Frame Extraction Complete
+
+                //> Phase 3 - Face Detection
+                val detectedFaces = processingRepository.detectFacesInFrames(
+                    frames = extractedFrames,
+                    intervalMs = 200L,
+                    onProgress = { progress, message ->
+
+                        processingUiState = processingUiState.copy(
+                            progress = progress,
+                            message = message
+                        )
+
+                        Log.d(
+                            "ProcessingViewModel",
+                            "Face Progress: $progress, Message: $message"
+                        )
+                    }
+                )
+
+                Log.d(
+                    "FaceDetection",
+                    "Total detected faces: ${detectedFaces.size}"
+                )
+
+                detectedFaces.forEach { face ->
+
+                    Log.d(
+                        "FaceDetection",
+                        "Timestamp=${face.timestampMs}, " +
+                                "BoundingBox=${face.boundingBox}, " +
+                                "TrackingId=${face.trackingId}"
+                    )
+                }
+
+
+
+
+
+
+
+
             }
             catch (e : Exception){
-                processingUiState = ProcessingUiState(
-                    phase = ProcessingPhase.METADATA_EXTRACTION,
-                    progress = 0f,
-                    message = "Failed to extract video metadata",
+                val failedPhase = processingUiState.phase
+
+                processingUiState = processingUiState.copy(
                     isProcessing = false,
-                    error = e.message
+                    error = e.message ?: "An unknown error occurred",
+                    message = when (failedPhase) {
+                        ProcessingPhase.METADATA_EXTRACTION ->
+                            "Failed to extract video metadata"
+
+                        ProcessingPhase.FRAME_EXTRACTION ->
+                            "Failed to extract video frames"
+
+                        ProcessingPhase.FACE_DETECTION ->
+                            "Failed to detect faces"
+
+                        else ->
+                            "Video processing failed"
+                    }
+                )
+
+                Log.e(
+                    "ProcessingViewModel",
+                    "Processing failed during $failedPhase",
+                    e
                 )
             }
 
-            //> Phase 1 - Metadata Extraction Complete
 
-            //> Phase 2 - Frame Extraction
+            Log.d(
+                "ProcessingViewModel",
+                "Extracted ${extractedFrames.size} frames"
+            )
+
+
 
 
 

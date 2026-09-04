@@ -71,4 +71,8 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+    // ML Kit Face Detection
+    implementation(libs.mlkit.face.detection)
+    // Coroutines Play Services
+    implementation(libs.kotlinx.coroutines.play.services)
 }

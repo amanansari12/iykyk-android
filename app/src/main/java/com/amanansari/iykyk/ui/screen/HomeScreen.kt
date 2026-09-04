@@ -80,6 +80,10 @@ fun HomeScreen(
 ){
     HomeScreenContent(
         onVideoSelected = onVideoSelected,
+        openDialog = viewModel.openDialog,
+        closeDialog = {
+            viewModel.onDialogConfirm()
+        },
         updateUri = { uri ->
             viewModel.updateUri(uri)
         },
@@ -89,6 +93,8 @@ fun HomeScreen(
 @Composable
 fun HomeScreenContent(
     selectedUri : Uri?,
+    openDialog: Boolean,
+    closeDialog: () -> Unit,
     onVideoSelected: (Uri) -> Unit,
     updateUri: (Uri?) -> Unit
 ) {
@@ -152,12 +158,10 @@ fun HomeScreenContent(
         updateUri(uri)
     }
 
-
-    selectedUri?.let { uri ->
-
+    if(openDialog){
         val videoName = uriToFilename(
             LocalContext.current,
-            uri
+            selectedUri ?: Uri.EMPTY
         )
 
         SelectedVideoDialog(
@@ -173,10 +177,12 @@ fun HomeScreenContent(
                 )
             },
             onProceed = {
-                onVideoSelected(uri)
+                onVideoSelected(selectedUri ?: Uri.EMPTY)
+                closeDialog()
             }
         )
     }
+
 
 
 
