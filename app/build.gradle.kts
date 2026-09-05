@@ -36,6 +36,10 @@ android {
     buildFeatures {
         compose = true
     }
+
+    androidResources {
+        noCompress += "tflite"
+    }
 }
 
 dependencies {
@@ -75,4 +79,6 @@ dependencies {
     implementation(libs.mlkit.face.detection)
     // Coroutines Play Services
     implementation(libs.kotlinx.coroutines.play.services)
+
+    implementation("com.google.ai.edge.litert:litert:1.4.2")
 }

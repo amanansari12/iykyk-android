@@ -1,5 +1,6 @@
 package com.amanansari.iykyk.ui.viewmodel
 
+import android.R.attr.bitmap
 import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Log
@@ -176,11 +177,54 @@ class ProcessingViewModel @Inject constructor(
                     )
                 }
 
+                //> Phase 3 - Face Detection Completed
 
+                //> Phase 4 - Face Embedding
 
+                //> Phase 4 - Face Embedding
 
+                //> Phase 4 - Face Embedding
 
+                processingUiState = ProcessingUiState(
+                    phase = ProcessingPhase.FACE_EMBEDDING,
+                    progress = 0f,
+                    message = "Testing face embeddings...",
+                    isProcessing = true
+                )
 
+                Log.d(
+                    "ProcessingViewModel",
+                    "Starting face embedding test"
+                )
+
+                // Verify model
+                processingRepository.inspectEmbeddingModel()
+
+//                withContext(Dispatchers.Default) {
+//                    processingRepository.testMultipleSimilarities(
+//                        frames = extractedFrames,
+//                        detectedFaces = detectedFaces,
+//                        intervalMs = 200L
+//                    )
+//                }
+
+                withContext(Dispatchers.Default) {
+
+                    processingRepository.collectSimilaritySamples(
+                        frames = extractedFrames,
+                        detectedFaces = detectedFaces,
+                        intervalMs = 200L,
+                        maxSamePairs = 20,
+                        maxDifferentPairs = 20
+                    )
+                }
+
+                processingUiState = ProcessingUiState(
+                    phase = ProcessingPhase.FACE_EMBEDDING,
+                    progress = 1f,
+                    message = "Face embedding test completed",
+                    isProcessing = false
+                )
 
 
             }
