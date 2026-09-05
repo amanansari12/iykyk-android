@@ -35,6 +35,9 @@ class ProcessingViewModel @Inject constructor(
     var processingUiState by mutableStateOf<ProcessingUiState>(ProcessingUiState())
         private set
 
+    var appearanceCounts: Map<Int, Int> = emptyMap()
+        private set
+
 
     fun updateUri(uri: Uri?){
         this.selectedUri = uri

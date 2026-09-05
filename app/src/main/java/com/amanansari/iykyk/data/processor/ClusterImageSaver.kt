@@ -2,6 +2,7 @@ package com.amanansari.iykyk.data.processor
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.Log
 import com.amanansari.iykyk.data.model.FaceCluster
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -16,7 +17,15 @@ class ClusterImageSaver @Inject constructor(
         clusters: List<FaceCluster>,
         intervalMs: Long = 200L
     ) {
+
+
+
         val outputDir = File(context.cacheDir, "cluster_samples")
+
+        Log.d(
+            "ClusterImageSaver",
+            "Output directory = ${outputDir.absolutePath}"
+        )
 
         if (!outputDir.exists()) {
             outputDir.mkdirs()
@@ -62,6 +71,12 @@ class ClusterImageSaver @Inject constructor(
                     95,
                     outputStream
                 )
+
+                Log.d(
+                    "ClusterImageSaver",
+                    "Saved cluster ${cluster.id} -> ${outputFile.absolutePath}"
+                )
+
             }
 
             crop.recycle()

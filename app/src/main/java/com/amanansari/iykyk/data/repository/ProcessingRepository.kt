@@ -8,12 +8,15 @@ import com.amanansari.iykyk.data.model.DetectedFace
 import com.amanansari.iykyk.data.model.FaceCluster
 import com.amanansari.iykyk.data.model.FaceEmbeddingResult
 import com.amanansari.iykyk.data.model.VideoMetadata
+import com.amanansari.iykyk.data.processor.AppearanceCounter
 import com.amanansari.iykyk.data.processor.ClusterImageSaver
 import com.amanansari.iykyk.data.processor.FaceClusterer
 import com.amanansari.iykyk.data.processor.FaceDetector
 import com.amanansari.iykyk.data.processor.FaceEmbedding
 import com.amanansari.iykyk.data.processor.FrameExtractor
 import com.amanansari.iykyk.data.processor.VideoMetadataExtractor
+import java.nio.ByteBuffer
+import java.security.MessageDigest
 import javax.inject.Inject
 
 class ProcessingRepository @Inject constructor(
@@ -22,7 +25,8 @@ class ProcessingRepository @Inject constructor(
     private val faceDetector: FaceDetector,
     private val faceEmbedding: FaceEmbedding,
     private val faceClusterer: FaceClusterer,
-    private val clusterImageSaver: ClusterImageSaver
+    private val clusterImageSaver: ClusterImageSaver,
+    private val appearanceCounter: AppearanceCounter,
 ) {
 
     //> Video Metadata Extractor
@@ -40,12 +44,38 @@ class ProcessingRepository @Inject constructor(
         intervalMs: Long = 200L,
         onProgress: (Float, String) -> Unit
     ): List<Bitmap> {
-        return frameExtractor.extractFrames(
+        val frames = frameExtractor.extractFrames(
             videoUri = uri,
             durationMs = durationMs,
             intervalMs = intervalMs,
             onProgress = onProgress
         )
+
+        // TEMPORARY DEBUG
+        Log.d(
+            "FrameHash",
+            "timestamp=200 hash=${bitmapHash(frames[1])}"
+        )
+
+        Log.d(
+            "FrameHash",
+            "timestamp=13400 hash=${bitmapHash(frames[67])}"
+        )
+
+        return frames
+    }
+
+
+    //! only temporary
+    private fun bitmapHash(bitmap: Bitmap): String {
+        val buffer = ByteBuffer.allocate(bitmap.allocationByteCount)
+
+        bitmap.copyPixelsToBuffer(buffer)
+
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(buffer.array())
+
+        return digest.joinToString("") { "%02x".format(it) }
     }
 
     //> Face Detection
@@ -129,28 +159,46 @@ class ProcessingRepository @Inject constructor(
 
     //> Face Clustering
 
-//    fun clusterFaces(
-//        embeddingResults: List<FaceEmbeddingResult>
-//    ): List<FaceCluster> {
-//        return faceClusterer.cluster(embeddingResults)
-//    }
-
-
-    //> Save Face Clusters
-
     fun clusterFaces(
         frames: List<Bitmap>,
         embeddingResults: List<FaceEmbeddingResult>
     ): List<FaceCluster> {
 
-        val clusters = faceClusterer.cluster(embeddingResults)
 
-        // Temporary debugging only
+        val orderedResults = embeddingResults.sortedWith(
+            compareBy(
+                { it.detectedFace.timestampMs },
+                { it.detectedFace.boundingBox.top },
+                { it.detectedFace.boundingBox.left }
+            )
+        )
+
+        val clusters = faceClusterer.cluster(orderedResults)
+
+        val appearanceCounts = clusters.associate { cluster ->
+            cluster.id to appearanceCounter.countAppearances(cluster)
+        }
+
+        appearanceCounts.forEach { (clusterId, count) ->
+            Log.d(
+                "AppearanceCounter",
+                "Cluster $clusterId → $count appearances"
+            )
+        }
+
+        //! Temp
+//        faceClusterer.logClusterPairStatistics(clusters)
+
+        faceClusterer.logMemberSimilarities(clusters)
+        faceClusterer.logClusterTimeline(clusters)
+        faceClusterer.logClusterBoundingBoxes(clusters)
+
         clusterImageSaver.saveClusterSamples(
             frames = frames,
             clusters = clusters
         )
 
         return clusters
+
     }
 }
