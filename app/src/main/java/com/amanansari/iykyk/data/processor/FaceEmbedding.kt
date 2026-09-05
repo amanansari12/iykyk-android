@@ -6,6 +6,7 @@ import android.graphics.Rect
 import android.util.Log
 import androidx.core.graphics.scale
 import com.amanansari.iykyk.data.model.DetectedFace
+import com.amanansari.iykyk.data.model.FaceEmbeddingResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.tensorflow.lite.Interpreter
 import java.io.FileInputStream
@@ -42,6 +43,13 @@ class FaceEmbedding @Inject constructor(
 
     }
 
+    private data class PreparedFace(
+        val bitmap: Bitmap,
+        val sharpness: Double,
+        val visibleRatio: Float
+    )
+
+
     private val interpreter: Interpreter by lazy {
         Interpreter(loadModelFile())
     }
@@ -52,39 +60,28 @@ class FaceEmbedding @Inject constructor(
     fun generateEmbedding(
         bitmap: Bitmap,
         detectedFace: DetectedFace
-    ): FloatArray {
+    ): FaceEmbeddingResult? {
 
-        val faceBitmap = cropFace(
+        val preparedFace = prepareFace(
             bitmap = bitmap,
             detectedFace = detectedFace
-        ) ?: throw IllegalArgumentException(
-            "Could not crop face for embedding"
-        )
+        ) ?: return null
 
         Log.d(
             "FaceEmbedding",
             "Generating embedding: " +
                     "timestamp=${detectedFace.timestampMs}, " +
-                    "crop=${faceBitmap.width}x${faceBitmap.height}"
+                    "crop=${preparedFace.bitmap.width}x${preparedFace.bitmap.height}"
         )
 
-        // Resize face to model input size.
-        val resizedFace = faceBitmap.scale(
-            MODEL_INPUT_SIZE,
-            MODEL_INPUT_SIZE
-        )
-
-        // Convert to FLOAT32 input.
         val inputBuffer = convertBitmapToBuffer(
-            resizedFace
+            preparedFace.bitmap
         )
 
-        // Model output: [1, 512]
         val output = Array(1) {
             FloatArray(EMBEDDING_SIZE)
         }
 
-        // Run FaceNet.
         interpreter.run(
             inputBuffer,
             output
@@ -97,54 +94,40 @@ class FaceEmbedding @Inject constructor(
                     "values=${output[0].size}"
         )
 
-        return output[0]
+        return FaceEmbeddingResult(
+            detectedFace = detectedFace,
+            embedding = output[0],
+            sharpness = preparedFace.sharpness,
+            visibleRatio = preparedFace.visibleRatio
+        )
     }
 
-    /**
-     * Checks whether a detected face is suitable for embedding.
-     *
-     * Checks:
-     * 1. Valid bounding box
-     * 2. Minimum face size
-     * 3. Reject abnormally large detections
-     * 4. Minimum visible area
-     * 5. Sharpness of face crop
-     */
-    fun isUsableForEmbedding(
+    private fun prepareFace(
         bitmap: Bitmap,
         detectedFace: DetectedFace
-    ): Boolean {
+    ): PreparedFace? {
 
         val box = detectedFace.boundingBox
 
-        // ---------------------------------------------------------
         // 1. Validate bounding box
-        // ---------------------------------------------------------
-
         val boxWidth = box.width()
         val boxHeight = box.height()
 
         if (boxWidth <= 0 || boxHeight <= 0) {
-
             Log.d(
                 "EmbeddingQuality",
                 "Rejected: invalid bounding box " +
                         "timestamp=${detectedFace.timestampMs}, " +
                         "box=$box"
             )
-
-            return false
+            return null
         }
 
-        // ---------------------------------------------------------
         // 2. Minimum face size
-        // ---------------------------------------------------------
-
         if (
             boxWidth < MIN_FACE_SIZE ||
             boxHeight < MIN_FACE_SIZE
         ) {
-
             Log.d(
                 "EmbeddingQuality",
                 "Rejected: face too small " +
@@ -152,53 +135,29 @@ class FaceEmbedding @Inject constructor(
                         "width=$boxWidth, " +
                         "height=$boxHeight"
             )
-
-            return false
+            return null
         }
 
-        // ---------------------------------------------------------
-        // 3. Check visibility inside frame
-        // ---------------------------------------------------------
+        // 3. Calculate visible area
+        val visibleLeft = box.left.coerceIn(0, bitmap.width)
+        val visibleTop = box.top.coerceIn(0, bitmap.height)
+        val visibleRight = box.right.coerceIn(0, bitmap.width)
+        val visibleBottom = box.bottom.coerceIn(0, bitmap.height)
 
-        val visibleLeft = box.left.coerceIn(
-            0,
-            bitmap.width
-        )
-
-        val visibleTop = box.top.coerceIn(
-            0,
-            bitmap.height
-        )
-
-        val visibleRight = box.right.coerceIn(
-            0,
-            bitmap.width
-        )
-
-        val visibleBottom = box.bottom.coerceIn(
-            0,
-            bitmap.height
-        )
-
-        val visibleWidth =
-            visibleRight - visibleLeft
-
-        val visibleHeight =
-            visibleBottom - visibleTop
+        val visibleWidth = visibleRight - visibleLeft
+        val visibleHeight = visibleBottom - visibleTop
 
         if (
             visibleWidth <= 0 ||
             visibleHeight <= 0
         ) {
-
             Log.d(
                 "EmbeddingQuality",
                 "Rejected: face completely outside frame " +
                         "timestamp=${detectedFace.timestampMs}, " +
                         "box=$box"
             )
-
-            return false
+            return null
         }
 
         val boxArea =
@@ -208,13 +167,9 @@ class FaceEmbedding @Inject constructor(
             visibleWidth.toLong() * visibleHeight.toLong()
 
         val visibleRatio =
-            visibleArea.toFloat() /
-                    boxArea.toFloat()
+            visibleArea.toFloat() / boxArea.toFloat()
 
-// ---------------------------------------------------------
-// 3a. Reject detections that extend too far outside frame
-// ---------------------------------------------------------
-
+        // 4. Outside-frame check
         val outsideRatio = 1f - visibleRatio
 
         if (outsideRatio > MAX_OUTSIDE_FRAME_RATIO) {
@@ -225,14 +180,10 @@ class FaceEmbedding @Inject constructor(
                         "outsideRatio=$outsideRatio, " +
                         "box=$box"
             )
-
-            return false
+            return null
         }
 
-        // ---------------------------------------------------------
-        // 3b. Reject implausibly large face detections
-        // ---------------------------------------------------------
-
+        // 5. Face area check
         val frameArea =
             bitmap.width.toLong() * bitmap.height.toLong()
 
@@ -247,20 +198,11 @@ class FaceEmbedding @Inject constructor(
                         "faceAreaRatio=$faceAreaRatio, " +
                         "box=$box"
             )
-
-            return false
+            return null
         }
 
-        Log.d(
-            "EmbeddingQuality",
-            "Visibility: " +
-                    "timestamp=${detectedFace.timestampMs}, " +
-                    "ratio=$visibleRatio, " +
-                    "box=$box"
-        )
-
+        // 6. Visible ratio check
         if (visibleRatio < MIN_VISIBLE_RATIO) {
-
             Log.d(
                 "EmbeddingQuality",
                 "Rejected: clipped face " +
@@ -268,32 +210,22 @@ class FaceEmbedding @Inject constructor(
                         "visibleRatio=$visibleRatio, " +
                         "box=$box"
             )
-
-            return false
+            return null
         }
 
-        // ---------------------------------------------------------
-        // 4. Crop face
-        // ---------------------------------------------------------
-
+        // 7. Crop once
         val faceBitmap = cropFace(
             bitmap = bitmap,
             detectedFace = detectedFace
-        ) ?: return false
+        ) ?: return null
 
-        // ---------------------------------------------------------
-        // 5. Resize face crop to fixed size
-        // ---------------------------------------------------------
-
+        // 8. Resize once
         val resizedFace = faceBitmap.scale(
             MODEL_INPUT_SIZE,
             MODEL_INPUT_SIZE
         )
 
-        // ---------------------------------------------------------
-        // 6. Calculate sharpness on 160x160 face
-        // ---------------------------------------------------------
-
+        // 9. Sharpness
         val sharpness = calculateSharpness(
             resizedFace
         )
@@ -305,12 +237,7 @@ class FaceEmbedding @Inject constructor(
                     "sharpness=$sharpness"
         )
 
-        // ---------------------------------------------------------
-        // 7. Reject blurry faces
-        // ---------------------------------------------------------
-
         if (sharpness < MIN_SHARPNESS) {
-
             Log.d(
                 "EmbeddingQuality",
                 "Rejected: blurry face " +
@@ -318,8 +245,7 @@ class FaceEmbedding @Inject constructor(
                         "sharpness=$sharpness, " +
                         "threshold=$MIN_SHARPNESS"
             )
-
-            return false
+            return null
         }
 
         Log.d(
@@ -329,7 +255,11 @@ class FaceEmbedding @Inject constructor(
                     "sharpness=$sharpness"
         )
 
-        return true
+        return PreparedFace(
+            bitmap = resizedFace,
+            sharpness = sharpness,
+            visibleRatio = visibleRatio
+        )
     }
 
     /**
@@ -681,54 +611,6 @@ class FaceEmbedding @Inject constructor(
         )
     }
 
-    /**
-     * Calculates cosine similarity between two embeddings.
-     *
-     * Closer to 1 = more similar.
-     */
-    fun cosineSimilarity(
-        embedding1: FloatArray,
-        embedding2: FloatArray
-    ): Float {
-
-        require(
-            embedding1.size == embedding2.size
-        ) {
-            "Embeddings must have the same size"
-        }
-
-        var dotProduct = 0f
-        var magnitude1 = 0f
-        var magnitude2 = 0f
-
-        for (i in embedding1.indices) {
-
-            dotProduct +=
-                embedding1[i] *
-                        embedding2[i]
-
-            magnitude1 +=
-                embedding1[i] *
-                        embedding1[i]
-
-            magnitude2 +=
-                embedding2[i] *
-                        embedding2[i]
-        }
-
-        if (
-            magnitude1 == 0f ||
-            magnitude2 == 0f
-        ) {
-            return 0f
-        }
-
-        return dotProduct /
-                (
-                        sqrt(magnitude1) *
-                                sqrt(magnitude2)
-                        )
-    }
 
     /**
      * Releases the TensorFlow Lite interpreter.

@@ -9,6 +9,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.amanansari.iykyk.data.model.FaceCluster
+import com.amanansari.iykyk.data.model.FaceEmbeddingResult
 import com.amanansari.iykyk.data.model.ProcessingPhase
 import com.amanansari.iykyk.data.model.ProcessingUiState
 import com.amanansari.iykyk.data.model.VideoMetadata
@@ -59,6 +61,11 @@ class ProcessingViewModel @Inject constructor(
     var extractedFrames: List<Bitmap> = emptyList()
         private set
 
+    var embeddingResults: List<FaceEmbeddingResult> = emptyList()
+        private set
+
+    var faceClusters: List<FaceCluster> = emptyList()
+        private set
 
     fun startProcessing(){
 
@@ -142,6 +149,12 @@ class ProcessingViewModel @Inject constructor(
                     )
                 }
 
+                Log.d(
+                    "ProcessingViewModel",
+                    "Extracted ${extractedFrames.size} frames"
+                )
+
+
                 //> Phase 2 - Frame Extraction Complete
 
                 //> Phase 3 - Face Detection
@@ -181,50 +194,80 @@ class ProcessingViewModel @Inject constructor(
 
                 //> Phase 4 - Face Embedding
 
-                //> Phase 4 - Face Embedding
-
-                //> Phase 4 - Face Embedding
-
                 processingUiState = ProcessingUiState(
                     phase = ProcessingPhase.FACE_EMBEDDING,
                     progress = 0f,
-                    message = "Testing face embeddings...",
+                    message = "Generating face embeddings...",
                     isProcessing = true
                 )
 
                 Log.d(
                     "ProcessingViewModel",
-                    "Starting face embedding test"
+                    "Starting face embedding generation"
                 )
 
-                // Verify model
-                processingRepository.inspectEmbeddingModel()
-
-//                withContext(Dispatchers.Default) {
-//                    processingRepository.testMultipleSimilarities(
-//                        frames = extractedFrames,
-//                        detectedFaces = detectedFaces,
-//                        intervalMs = 200L
-//                    )
-//                }
-
-                withContext(Dispatchers.Default) {
-
-                    processingRepository.collectSimilaritySamples(
+                embeddingResults = withContext(Dispatchers.IO) {
+                    processingRepository.generateEmbeddings(
                         frames = extractedFrames,
                         detectedFaces = detectedFaces,
                         intervalMs = 200L,
-                        maxSamePairs = 20,
-                        maxDifferentPairs = 20
+                        onProgress = { progress, message ->
+
+                            processingUiState = processingUiState.copy(
+                                progress = progress,
+                                message = message
+                            )
+
+                            Log.d(
+                                "ProcessingViewModel",
+                                "Embedding Progress: $progress, Message: $message"
+                            )
+                        }
                     )
                 }
+
+                Log.d(
+                    "ProcessingViewModel",
+                    "Generated ${embeddingResults.size} face embeddings"
+                )
 
                 processingUiState = ProcessingUiState(
                     phase = ProcessingPhase.FACE_EMBEDDING,
                     progress = 1f,
-                    message = "Face embedding test completed",
+                    message = "Face embeddings generated",
                     isProcessing = false
                 )
+
+                //> Phase 4 - Face Embedding Ending
+
+                //> Phase 5 - Face Clustering (Making Clusters from Embeddings)
+
+                Log.d("ProcessingViewModel", "Starting face clustering")
+
+//                faceClusters = withContext(Dispatchers.Default) {
+//                    processingRepository.clusterFaces(embeddingResults)
+//                }
+
+                faceClusters = withContext(Dispatchers.Default) {
+                    processingRepository.clusterFaces(
+                        frames = extractedFrames,
+                        embeddingResults = embeddingResults
+                    )
+                }
+
+                Log.d(
+                    "ProcessingViewModel",
+                    "Generated ${faceClusters.size} face clusters"
+                )
+
+                faceClusters.forEach { cluster ->
+                    Log.d(
+                        "ProcessingViewModel",
+                        "Cluster ${cluster.id}: ${cluster.members.size} members"
+                    )
+                }
+
+
 
 
             }
@@ -257,10 +300,6 @@ class ProcessingViewModel @Inject constructor(
             }
 
 
-            Log.d(
-                "ProcessingViewModel",
-                "Extracted ${extractedFrames.size} frames"
-            )
 
 
 
