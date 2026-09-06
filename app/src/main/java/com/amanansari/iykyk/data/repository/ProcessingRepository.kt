@@ -18,6 +18,7 @@ import com.amanansari.iykyk.data.processor.FaceClusterer
 import com.amanansari.iykyk.data.processor.FaceDetector
 import com.amanansari.iykyk.data.processor.FaceEmbedding
 import com.amanansari.iykyk.data.processor.FrameExtractor
+import com.amanansari.iykyk.data.processor.MediaExporter
 import com.amanansari.iykyk.data.processor.VideoMetadataExtractor
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -34,7 +35,8 @@ class ProcessingRepository @Inject constructor(
     private val clusterImageSaver: ClusterImageSaver,
     private val appearanceCounter: AppearanceCounter,
     private val bestShotSelector: BestShotSelector,
-    private val collageGenerator: CollageGenerator
+    private val collageGenerator: CollageGenerator,
+    private val mediaExporter: MediaExporter
 ) {
 
     //> Video Metadata Extractor
@@ -59,31 +61,7 @@ class ProcessingRepository @Inject constructor(
             onProgress = onProgress
         )
 
-        // TEMPORARY DEBUG
-        Log.d(
-            "FrameHash",
-            "timestamp=200 hash=${bitmapHash(frames[1])}"
-        )
-
-        Log.d(
-            "FrameHash",
-            "timestamp=13400 hash=${bitmapHash(frames[67])}"
-        )
-
         return frames
-    }
-
-
-    //! only temporary
-    private fun bitmapHash(bitmap: Bitmap): String {
-        val buffer = ByteBuffer.allocate(bitmap.allocationByteCount)
-
-        bitmap.copyPixelsToBuffer(buffer)
-
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(buffer.array())
-
-        return digest.joinToString("") { "%02x".format(it) }
     }
 
     //> Face Detection
@@ -237,5 +215,15 @@ class ProcessingRepository @Inject constructor(
 
     fun generateCollage(personResults: List<PersonResult>): Bitmap {
         return collageGenerator.generateCollage(personResults)
+    }
+
+    //> Export - Save & Share
+
+    fun saveCollageToGallery(bitmap: Bitmap): android.net.Uri? {
+        return mediaExporter.saveToGallery(bitmap)
+    }
+
+    fun getShareableCollageUri(bitmap: Bitmap): android.net.Uri? {
+        return mediaExporter.getShareableUri(bitmap)
     }
 }

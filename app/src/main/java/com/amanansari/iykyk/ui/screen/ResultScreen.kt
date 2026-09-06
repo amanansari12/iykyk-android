@@ -1,5 +1,6 @@
 package com.amanansari.iykyk.ui.screen
 
+import android.content.Intent
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
@@ -49,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -70,6 +72,7 @@ import com.amanansari.iykyk.ui.theme.TextMidEmphasis
 import com.amanansari.iykyk.ui.viewmodel.ProcessingViewModel
 import kotlinx.coroutines.delay
 import androidx.core.graphics.createBitmap
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun ResultScreen(
@@ -88,18 +91,31 @@ fun ResultScreen(
     }
 
 
+    val context = LocalContext.current
 
     ResultScreenContent(
         personResults = viewModel.personResults,
         collageBitmap = viewModel.collageBitmap,
         videoDurationMs = viewModel.videoMetadata?.durationMs ?: 0L,
-        onSaveToGallery = {
-            // TODO: MediaStore save — wire when we build export logic
+        onSaveToGallery = { onResult ->
+            viewModel.saveCollageToGallery { success ->
+                onResult(success)
+            }
         },
         onShare = {
-            // TODO: ACTION_SEND intent — wire when we build export logic
+            viewModel.getShareableCollageUri { uri ->
+                if (uri != null) {
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "image/jpeg"
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(shareIntent, "Share your collage"))
+                }
+            }
         }
     )
+
 }
 
 @Composable
@@ -107,7 +123,7 @@ fun ResultScreenContent(
     personResults: List<PersonResult>,
     collageBitmap: Bitmap?,
     videoDurationMs: Long,
-    onSaveToGallery: () -> Unit,
+    onSaveToGallery: (onResult: (Boolean) -> Unit) -> Unit,   // changed signature
     onShare: () -> Unit
 ) {
     val sortedPeople = remember(personResults) {
@@ -123,7 +139,7 @@ fun ResultScreenContent(
 
     LaunchedEffect(toastMessage) {
         if (toastMessage != null) {
-            delay(2200)
+            delay(2200.milliseconds)
             toastMessage = null
         }
     }
@@ -190,12 +206,14 @@ fun ResultScreenContent(
                 .align(Alignment.BottomCenter)
                 .padding(16.dp),
             onSaveClick = {
-                onSaveToGallery()
                 toastMessage = "Saved to Photos"
+                onSaveToGallery { success ->
+                    toastMessage = if (success) "Saved to Photos" else "Couldn't save — try again"
+                }
             },
             onShareClick = {
-                onShare()
                 toastMessage = "Opening share sheet"
+                onShare()
             }
         )
 
@@ -736,7 +754,7 @@ private fun ResultScreenPreview() {
                 personResults = dummyPeople,
                 collageBitmap = dummyBitmap,
                 videoDurationMs = 30_000L,
-                onSaveToGallery = {},
+                onSaveToGallery = { onResult -> onResult(true) },
                 onShare = {}
             )
         }

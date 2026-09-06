@@ -13,7 +13,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,17 +28,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,6 +68,10 @@ import com.amanansari.iykyk.ui.theme.SurfaceContainerMid
 import com.amanansari.iykyk.ui.theme.TextHighEmphasis
 import com.amanansari.iykyk.ui.theme.TextMidEmphasis
 import com.amanansari.iykyk.ui.viewmodel.ProcessingViewModel
+import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
+
+private val ProcessingWarning = Color(0xFFD78203)
 
 @Composable
 fun ProcessingScreen(
@@ -88,32 +86,77 @@ fun ProcessingScreen(
         onCancel()
     }
 
-    LaunchedEffect(viewModel.processingUiState.isCompleted) {
+    /*
+     * Navigate to Results when processing completes.
+     */
+    LaunchedEffect(
+        viewModel.processingUiState.isCompleted
+    ) {
         if (viewModel.processingUiState.isCompleted) {
             onCompleted()
         }
     }
 
+    /*
+     * Automatic failure countdown.
+     *
+     * When Face Detection or Face Embeddings produces zero results,
+     * the ViewModel sets isProcessFailed = true and the countdown
+     * begins here.
+     */
+    LaunchedEffect(
+        viewModel.processingUiState.isProcessFailed
+    ) {
+        if (viewModel.processingUiState.isProcessFailed) {
+
+            for (seconds in 10 downTo 1) {
+
+                viewModel.updateFailureCountdown(seconds)
+
+                delay(1000.milliseconds)
+            }
+
+            viewModel.cancelProcessing()
+            onCancel()
+        }
+    }
+
+    /*
+     * Android system back.
+     */
     BackHandler {
         cancelAndReturnHome()
     }
 
+    /*
+     * Start processing when this screen receives a URI.
+     */
     LaunchedEffect(uri) {
         viewModel.updateUri(uri)
         viewModel.startProcessing()
+
     }
 
     ProcessingScreenContent(
         uiState = viewModel.processingUiState,
-        onCancel = cancelAndReturnHome
+        onCancel = cancelAndReturnHome,
+        videoMs = viewModel.videoMetadata?.durationMs ?: 0L,
     )
+
 }
+/* -------------------------------------------------------------------------- */
+/* Main screen                                                                */
+/* -------------------------------------------------------------------------- */
 
 @Composable
 private fun ProcessingScreenContent(
     uiState: ProcessingUiState,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    videoMs : Long
 ) {
+
+    Spacer(modifier = Modifier.height(16.dp))
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -126,7 +169,7 @@ private fun ProcessingScreenContent(
             ProcessingHeader(
                 isProcessing = uiState.isProcessing,
                 isCompleted = uiState.isCompleted,
-                hasError = uiState.error != null
+                hasError = uiState.isProcessFailed
             )
         }
 
@@ -140,13 +183,15 @@ private fun ProcessingScreenContent(
             ProcessingPipeline(
                 currentPhase = uiState.phase,
                 progress = uiState.progress,
-                isCompleted = uiState.isCompleted
+                isCompleted = uiState.isCompleted,
+                isProcessFailed = uiState.isProcessFailed
             )
         }
 
         item {
             SecurityAuditCard(
-                uiState = uiState
+                uiState = uiState,
+                videoMs = videoMs
             )
         }
 
@@ -158,13 +203,15 @@ private fun ProcessingScreenContent(
         }
 
         item {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
         }
     }
 }
 
 /* -------------------------------------------------------------------------- */
-/* Header                                                                     */
+/* Processing header                                                          */
 /* -------------------------------------------------------------------------- */
 
 @Composable
@@ -185,7 +232,9 @@ private fun ProcessingHeader(
             hasError = hasError
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(
+            modifier = Modifier.height(8.dp)
+        )
 
         Text(
             text = when {
@@ -199,13 +248,20 @@ private fun ProcessingHeader(
             lineHeight = 34.sp
         )
 
-        Spacer(modifier = Modifier.height(2.dp))
+        Spacer(
+            modifier = Modifier.height(2.dp)
+        )
 
         Text(
             text = when {
-                hasError -> "Something went wrong while processing the video."
-                isCompleted -> "Your video has been analyzed successfully."
-                else -> "Analyzing your video locally to identify people and appearances without sending a single byte to the cloud."
+                hasError ->
+                    "The video could not be processed."
+
+                isCompleted ->
+                    "Your video has been analyzed successfully."
+
+                else ->
+                    "Analyzing your video locally to identify people and appearances without sending a single byte to the cloud."
             },
             color = TextMidEmphasis,
             fontSize = 14.sp,
@@ -214,15 +270,18 @@ private fun ProcessingHeader(
     }
 }
 
+/* -------------------------------------------------------------------------- */
+/* Processing status pill                                                     */
+/* -------------------------------------------------------------------------- */
+
 @Composable
 private fun ProcessingStatusPill(
     isProcessing: Boolean,
     isCompleted: Boolean,
     hasError: Boolean
 ) {
-    val dotColor = when {
-        hasError -> Color(0xFFF43F5E)
-        isCompleted -> Secondary
+    val statusColor = when {
+        hasError -> ProcessingWarning
         else -> Secondary
     }
 
@@ -234,7 +293,10 @@ private fun ProcessingStatusPill(
         initialValue = 1f,
         targetValue = 0.35f,
         animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = LinearEasing),
+            animation = tween(
+                durationMillis = 900,
+                easing = LinearEasing
+            ),
             repeatMode = RepeatMode.Reverse
         ),
         label = "status_alpha"
@@ -257,25 +319,28 @@ private fun ProcessingStatusPill(
             modifier = Modifier
                 .size(8.dp)
                 .background(
-                    color = dotColor.copy(
-                        alpha = if (isProcessing) pulseAlpha else 1f
+                    color = statusColor.copy(
+                        alpha = if (isProcessing) {
+                            pulseAlpha
+                        } else {
+                            1f
+                        }
                     ),
                     shape = CircleShape
                 )
         )
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(
+            modifier = Modifier.width(8.dp)
+        )
 
         Text(
             text = when {
-                hasError -> "PROCESSING ERROR"
+                hasError -> "PROCESSING FAILED"
                 isCompleted -> "PROCESSING COMPLETE"
                 else -> "ON-DEVICE PROCESSING"
             },
-            color = when {
-                hasError -> Color(0xFFF43F5E)
-                else -> Secondary
-            },
+            color = statusColor,
             fontSize = 9.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.2.sp
@@ -296,6 +361,9 @@ private fun CurrentPhaseCard(
         animationSpec = tween(500),
         label = "progress"
     )
+
+    val currentProgressPercent =
+        (animatedProgress * 100).toInt()
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -327,8 +395,12 @@ private fun CurrentPhaseCard(
                 )
 
                 Text(
-                    text = "${(animatedProgress * 100).toInt()}%",
-                    color = Primary,
+                    text = "$currentProgressPercent%",
+                    color = if (uiState.isProcessFailed) {
+                        ProcessingWarning
+                    } else {
+                        Primary
+                    },
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -347,26 +419,44 @@ private fun CurrentPhaseCard(
             ) { phase ->
 
                 Column {
+
                     Text(
-                        text = phase.displayName(),
-                        color = when {
-                            uiState.error != null -> Color(0xFFF43F5E)
-                            else -> TextHighEmphasis
+                        text = if (uiState.isProcessFailed) {
+                            "Process Failed"
+                        } else {
+                            phase.displayName()
+                        },
+                        color = if (uiState.isProcessFailed) {
+                            ProcessingWarning
+                        } else {
+                            TextHighEmphasis
                         },
                         fontSize = 20.sp,
                         fontWeight = FontWeight.SemiBold
                     )
 
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(
+                        modifier = Modifier.height(2.dp)
+                    )
 
                     Text(
-                        text = uiState.error ?: uiState.message.ifBlank {
+                        text = uiState.message.ifBlank {
                             phase.defaultMessage()
                         },
                         color = TextMidEmphasis,
                         fontSize = 12.sp,
                         lineHeight = 18.sp
                     )
+
+                    if (uiState.isProcessFailed) {
+
+                        Text(
+                            text = "Returning to Home in ${uiState.failureCountdown}s",
+                            color = ProcessingWarning,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
 
@@ -385,13 +475,27 @@ private fun CurrentPhaseCard(
                         .fillMaxWidth(animatedProgress)
                         .height(8.dp)
                         .background(
-                            brush = Brush.horizontalGradient(
-                                colors = listOf(
-                                    Primary,
-                                    Primary.copy(alpha = 0.9f),
-                                    Secondary
+                            brush = if (uiState.isProcessFailed) {
+
+                                Brush.horizontalGradient(
+                                    colors = listOf(
+                                        ProcessingWarning,
+                                        ProcessingWarning.copy(
+                                            alpha = 0.75f
+                                        )
+                                    )
                                 )
-                            ),
+
+                            } else {
+
+                                Brush.horizontalGradient(
+                                    colors = listOf(
+                                        Primary,
+                                        Primary.copy(alpha = 0.9f),
+                                        Secondary
+                                    )
+                                )
+                            },
                             shape = RoundedCornerShape(50)
                         )
                 )
@@ -408,7 +512,8 @@ private fun CurrentPhaseCard(
 private fun ProcessingPipeline(
     currentPhase: ProcessingPhase?,
     progress: Float,
-    isCompleted: Boolean
+    isCompleted: Boolean,
+    isProcessFailed: Boolean
 ) {
     val phases = remember {
         ProcessingPhase.entries
@@ -449,15 +554,25 @@ private fun ProcessingPipeline(
                 )
 
                 Text(
-                    text = "${(currentIndex + 1).coerceAtLeast(0)} OF ${phases.size}",
-                    color = Secondary,
+                    text = if (isProcessFailed) {
+                        "${(currentIndex + 1).coerceAtLeast(0)} OF ${phases.size} FAILED"
+                    } else {
+                        "${(currentIndex + 1).coerceAtLeast(0)} OF ${phases.size}"
+                    },
+                    color = if (isProcessFailed) {
+                        ProcessingWarning
+                    } else {
+                        Secondary
+                    },
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(
+                modifier = Modifier.height(16.dp)
+            )
 
             phases.forEachIndexed { index, phase ->
 
@@ -465,26 +580,44 @@ private fun ProcessingPipeline(
                     phase = phase,
                     index = index,
                     currentIndex = currentIndex,
-                    currentProgress = if (index == currentIndex) progress else null
+                    currentProgress = if (
+                        index == currentIndex
+                    ) {
+                        progress
+                    } else {
+                        null
+                    },
+                    isProcessFailed = isProcessFailed
                 )
             }
         }
     }
 }
 
+/* -------------------------------------------------------------------------- */
+/* Pipeline row                                                               */
+/* -------------------------------------------------------------------------- */
+
 @Composable
 private fun PipelineRow(
     phase: ProcessingPhase,
     index: Int,
     currentIndex: Int,
-    currentProgress: Float?
+    currentProgress: Float?,
+    isProcessFailed: Boolean
 ) {
-    val isCompleted = index < currentIndex
-    val isActive = index == currentIndex
-    val isPending = index > currentIndex
+    val isFailed =
+        isProcessFailed && index == currentIndex
+
+    val isCompleted =
+        index < currentIndex
+
+    val isActive =
+        index == currentIndex && !isFailed
 
     val titleColor by animateColorAsState(
         targetValue = when {
+            isFailed -> ProcessingWarning
             isActive -> Primary
             isCompleted -> TextHighEmphasis
             else -> TextMidEmphasis.copy(alpha = 0.6f)
@@ -499,7 +632,11 @@ private fun PipelineRow(
 
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = if (isActive) 1.15f else 1f,
+        targetValue = if (isActive) {
+            1.15f
+        } else {
+            1f
+        },
         animationSpec = infiniteRepeatable(
             animation = tween(
                 durationMillis = 850,
@@ -511,6 +648,7 @@ private fun PipelineRow(
     )
 
     Column {
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -524,7 +662,36 @@ private fun PipelineRow(
             ) {
 
                 when {
+
+                    /*
+                     * Failed phase
+                     */
+                    isFailed -> {
+
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .background(
+                                    color = ProcessingWarning,
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+
+                            Text(
+                                text = "!",
+                                color = Background,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    /*
+                     * Completed phase
+                     */
                     isCompleted -> {
+
                         Box(
                             modifier = Modifier
                                 .size(24.dp)
@@ -534,6 +701,7 @@ private fun PipelineRow(
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
+
                             Icon(
                                 imageVector = Icons.Default.Check,
                                 contentDescription = "Completed",
@@ -543,17 +711,24 @@ private fun PipelineRow(
                         }
                     }
 
+                    /*
+                     * Active phase
+                     */
                     isActive -> {
+
                         Box(
                             modifier = Modifier
                                 .size(24.dp)
                                 .scale(pulseScale)
                                 .background(
-                                    color = Primary.copy(alpha = 0.16f),
+                                    color = Primary.copy(
+                                        alpha = 0.16f
+                                    ),
                                     shape = CircleShape
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
+
                             Box(
                                 modifier = Modifier
                                     .size(20.dp)
@@ -563,6 +738,7 @@ private fun PipelineRow(
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
+
                                 Box(
                                     modifier = Modifier
                                         .size(7.dp)
@@ -575,7 +751,11 @@ private fun PipelineRow(
                         }
                     }
 
+                    /*
+                     * Pending phase
+                     */
                     else -> {
+
                         Box(
                             modifier = Modifier
                                 .size(24.dp)
@@ -585,11 +765,14 @@ private fun PipelineRow(
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
+
                             Box(
                                 modifier = Modifier
                                     .size(6.dp)
                                     .background(
-                                        color = TextMidEmphasis.copy(alpha = 0.35f),
+                                        color = TextMidEmphasis.copy(
+                                            alpha = 0.35f
+                                        ),
                                         shape = CircleShape
                                     )
                             )
@@ -598,7 +781,9 @@ private fun PipelineRow(
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(
+                modifier = Modifier.width(12.dp)
+            )
 
             Column(
                 modifier = Modifier.weight(1f)
@@ -608,26 +793,50 @@ private fun PipelineRow(
                     text = phase.displayName(),
                     color = titleColor,
                     fontSize = 14.sp,
-                    fontWeight = if (isActive) {
+                    fontWeight = if (
+                        isActive || isFailed
+                    ) {
                         FontWeight.SemiBold
                     } else {
                         FontWeight.Medium
                     }
                 )
 
-                if (isActive && currentProgress != null) {
+                when {
+                    isFailed -> {
 
-                    Text(
-                        text = "Active · ${(currentProgress * 100).toInt()}% complete",
-                        color = Primary,
-                        fontSize = 9.sp,
-                        letterSpacing = 0.4.sp
-                    )
+                        Text(
+                            text = "Process Failed",
+                            color = ProcessingWarning,
+                            fontSize = 9.sp,
+                            letterSpacing = 0.4.sp
+                        )
+                    }
+
+                    isActive && currentProgress != null -> {
+
+                        Text(
+                            text = "Active · ${(currentProgress * 100).toInt()}% complete",
+                            color = Primary,
+                            fontSize = 9.sp,
+                            letterSpacing = 0.4.sp
+                        )
+                    }
                 }
             }
 
             when {
+
+                isFailed -> {
+
+                    PipelineStatusChip(
+                        text = "Failed",
+                        color = ProcessingWarning
+                    )
+                }
+
                 isCompleted -> {
+
                     PipelineStatusChip(
                         text = "Done",
                         color = Secondary
@@ -635,20 +844,20 @@ private fun PipelineRow(
                 }
 
                 isActive -> {
+
                     PipelineStatusChip(
-                        text = if (phase == ProcessingPhase.COMPLETED) {
-                            "Complete"
-                        } else {
-                            "Inference"
-                        },
+                        text = "Inference",
                         color = Primary
                     )
                 }
 
                 else -> {
+
                     Text(
                         text = "QUEUED",
-                        color = TextMidEmphasis.copy(alpha = 0.45f),
+                        color = TextMidEmphasis.copy(
+                            alpha = 0.45f
+                        ),
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Medium,
                         letterSpacing = 1.sp
@@ -658,6 +867,7 @@ private fun PipelineRow(
         }
 
         if (index < ProcessingPhase.entries.lastIndex) {
+
             Box(
                 modifier = Modifier
                     .padding(start = 11.dp)
@@ -674,6 +884,10 @@ private fun PipelineRow(
         }
     }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Pipeline status chip                                                       */
+/* -------------------------------------------------------------------------- */
 
 @Composable
 private fun PipelineStatusChip(
@@ -708,7 +922,8 @@ private fun PipelineStatusChip(
 
 @Composable
 private fun SecurityAuditCard(
-    uiState: ProcessingUiState
+    uiState: ProcessingUiState,
+    videoMs: Long
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -749,7 +964,9 @@ private fun SecurityAuditCard(
                         modifier = Modifier.size(16.dp)
                     )
 
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(
+                        modifier = Modifier.width(4.dp)
+                    )
 
                     Text(
                         text = "HARDWARE ISOLATED",
@@ -761,7 +978,9 @@ private fun SecurityAuditCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(
+                modifier = Modifier.height(14.dp)
+            )
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -775,12 +994,14 @@ private fun SecurityAuditCard(
 
                 AuditCell(
                     title = "VIDEO DURATION",
-                    value = uiState.videoDurationText(),
+                    value = formatDuration(videoMs),
                     modifier = Modifier.weight(1f)
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(
+                modifier = Modifier.height(8.dp)
+            )
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -789,11 +1010,25 @@ private fun SecurityAuditCard(
                 AuditCell(
                     title = "PIPELINE STATUS",
                     value = when {
-                        uiState.error != null -> "FAILED"
-                        uiState.isCompleted -> "COMPLETE"
-                        else -> "PROCESSING"
+                        uiState.isProcessFailed ->
+                            "FAILED"
+
+                        uiState.isCompleted ->
+                            "COMPLETE"
+
+                        else ->
+                            "PROCESSING"
                     },
-                    valueColor = Secondary,
+                    valueColor = when {
+                        uiState.isProcessFailed ->
+                            ProcessingWarning
+
+                        uiState.isCompleted ->
+                            Secondary
+
+                        else ->
+                            Secondary
+                    },
                     modifier = Modifier.weight(1f)
                 )
 
@@ -807,6 +1042,10 @@ private fun SecurityAuditCard(
         }
     }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Audit cell                                                                 */
+/* -------------------------------------------------------------------------- */
 
 @Composable
 private fun AuditCell(
@@ -831,7 +1070,9 @@ private fun AuditCell(
             letterSpacing = 0.8.sp
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(
+            modifier = Modifier.height(4.dp)
+        )
 
         Text(
             text = value,
@@ -851,7 +1092,6 @@ private fun ProcessingControls(
     isProcessing: Boolean,
     onCancel: () -> Unit
 ) {
-
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -862,6 +1102,7 @@ private fun ProcessingControls(
             shape = RoundedCornerShape(50),
             color = SurfaceContainerHigh
         ) {
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -880,14 +1121,24 @@ private fun ProcessingControls(
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Cancel processing",
-                    tint = TextHighEmphasis
+                    tint = if (isProcessing) {
+                        TextHighEmphasis
+                    } else {
+                        TextMidEmphasis.copy(alpha = 0.45f)
+                    }
                 )
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(
+                    modifier = Modifier.width(8.dp)
+                )
 
                 Text(
                     text = "Cancel Processing",
-                    color = TextHighEmphasis,
+                    color = if (isProcessing) {
+                        TextHighEmphasis
+                    } else {
+                        TextMidEmphasis.copy(alpha = 0.45f)
+                    },
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -903,6 +1154,7 @@ private fun ProcessingControls(
             IconButton(
                 onClick = { }
             ) {
+
                 Icon(
                     imageVector = Icons.Default.Info,
                     contentDescription = "Processing information",
@@ -919,21 +1171,42 @@ private fun ProcessingControls(
 
 private fun ProcessingPhase?.displayName(): String {
     return when (this) {
-        ProcessingPhase.METADATA_EXTRACTION -> "Metadata Extraction"
-        ProcessingPhase.FRAME_EXTRACTION -> "Frame Extraction"
-        ProcessingPhase.FACE_DETECTION -> "Face Detection"
-        ProcessingPhase.FACE_EMBEDDING -> "Face Embeddings"
-        ProcessingPhase.CLUSTERING -> "Clustering"
-        ProcessingPhase.APPEARANCE_COUNTING -> "Appearance Counting"
-        ProcessingPhase.BEST_SHOT_SELECTION -> "Best Shot Selection"
-        ProcessingPhase.COLLAGE_GENERATION -> "Collage Generation"
-        ProcessingPhase.COMPLETED -> "Processing Complete"
-        null -> "Preparing..."
+
+        ProcessingPhase.METADATA_EXTRACTION ->
+            "Metadata Extraction"
+
+        ProcessingPhase.FRAME_EXTRACTION ->
+            "Frame Extraction"
+
+        ProcessingPhase.FACE_DETECTION ->
+            "Face Detection"
+
+        ProcessingPhase.FACE_EMBEDDING ->
+            "Face Embeddings"
+
+        ProcessingPhase.CLUSTERING ->
+            "Clustering"
+
+        ProcessingPhase.APPEARANCE_COUNTING ->
+            "Appearance Counting"
+
+        ProcessingPhase.BEST_SHOT_SELECTION ->
+            "Best Shot Selection"
+
+        ProcessingPhase.COLLAGE_GENERATION ->
+            "Collage Generation"
+
+        ProcessingPhase.COMPLETED ->
+            "Processing Complete"
+
+        null ->
+            "Preparing..."
     }
 }
 
 private fun ProcessingPhase?.defaultMessage(): String {
     return when (this) {
+
         ProcessingPhase.METADATA_EXTRACTION ->
             "Reading video metadata..."
 
@@ -966,25 +1239,76 @@ private fun ProcessingPhase?.defaultMessage(): String {
     }
 }
 
-/*
- * The current VideoMetadata model is not used here directly.
- * Until you expose duration through ProcessingUiState or ViewModel,
- * keep this value generic instead of fabricating telemetry.
- */
-private fun ProcessingUiState.videoDurationText(): String {
-    return "VIDEO READY"
+private fun formatDuration(durationMs: Long): String {
+    val totalSeconds = durationMs / 1000
+
+    return when {
+        totalSeconds < 60 -> {
+            "$totalSeconds sec"
+        }
+
+        totalSeconds < 3600 -> {
+            val minutes = totalSeconds / 60
+            val seconds = totalSeconds % 60
+            "%02d min %02d sec".format(minutes, seconds)
+        }
+
+        else -> {
+            val hours = totalSeconds / 3600
+            val minutes = (totalSeconds % 3600) / 60
+            val seconds = totalSeconds % 60
+            "%02d hr %02d min %02d sec".format(hours, minutes, seconds)
+        }
+    }
 }
 
+/* -------------------------------------------------------------------------- */
+/* Preview                                                                    */
+/* -------------------------------------------------------------------------- */
 
+@Preview(
+    showBackground = true,
+    backgroundColor = 0xFF101419
+)
 @Composable
-@Preview(showBackground = true)
-fun ProcessingScreenPreview() {
+private fun ProcessingScreenPreview() {
 
     IykykTheme {
+
         ProcessingScreenContent(
-            ProcessingUiState(),
-            onCancel = {}
+            uiState = ProcessingUiState(
+                phase = ProcessingPhase.FACE_DETECTION,
+                progress = 0.64f,
+                message = "Detecting faces across extracted frames...",
+                isProcessing = true
+            ),
+            onCancel = {},
+            videoMs = 1000L
         )
     }
+}
 
+@Preview(
+    showBackground = true,
+    backgroundColor = 0xFF101419
+)
+@Composable
+private fun ProcessingFailurePreview() {
+
+    IykykTheme {
+
+        ProcessingScreenContent(
+            uiState = ProcessingUiState(
+                phase = ProcessingPhase.FACE_DETECTION,
+                progress = 1f,
+                message = "No faces were detected in the video.",
+                isProcessing = false,
+                isProcessFailed = true,
+                failureCountdown = 10,
+                error = "Process Failed"
+            ),
+            onCancel = {},
+            videoMs = 1000L
+        )
+    }
 }

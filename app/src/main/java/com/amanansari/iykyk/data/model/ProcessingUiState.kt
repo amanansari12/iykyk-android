@@ -6,5 +6,9 @@ data class ProcessingUiState(
     val message: String = "",
     val isProcessing: Boolean = false,
     val isCompleted: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+
+    // New failure state
+    val isProcessFailed: Boolean = false,
+    val failureCountdown: Int = 0
 )

@@ -80,6 +80,7 @@ class ProcessingViewModel @Inject constructor(
     var collageBitmap: Bitmap? = null
         private set
 
+
     fun startProcessing(){
 
         val uri = selectedUri ?: return
@@ -200,6 +201,14 @@ class ProcessingViewModel @Inject constructor(
                     }
                 )
 
+                if (detectedFaces.isEmpty()) {
+                    handleProcessingFailure(
+                        phase = ProcessingPhase.FACE_DETECTION,
+                        message = "No faces were detected in the video."
+                    )
+                    return@launch
+                }
+
                 Log.d(
                     "FaceDetection",
                     "Total detected faces: ${detectedFaces.size}"
@@ -256,6 +265,14 @@ class ProcessingViewModel @Inject constructor(
                     "Generated ${embeddingResults.size} face embeddings"
                 )
 
+                if (embeddingResults.isEmpty()) {
+                    handleProcessingFailure(
+                        phase = ProcessingPhase.FACE_EMBEDDING,
+                        message = "No face embeddings could be generated."
+                    )
+                    return@launch
+                }
+
                 processingUiState = ProcessingUiState(
                     phase = ProcessingPhase.FACE_EMBEDDING,
                     progress = 1f,
@@ -268,10 +285,6 @@ class ProcessingViewModel @Inject constructor(
                 //> Phase 5 - Face Clustering (Making Clusters from Embeddings)
 
                 Log.d("ProcessingViewModel", "Starting face clustering")
-
-//                faceClusters = withContext(Dispatchers.Default) {
-//                    processingRepository.clusterFaces(embeddingResults)
-//                }
 
                 processingUiState = processingUiState.copy(
                     phase = ProcessingPhase.CLUSTERING,
@@ -300,6 +313,14 @@ class ProcessingViewModel @Inject constructor(
                     )
                 }
 
+                if (faceClusters.isEmpty()) {
+                    handleProcessingFailure(
+                        phase = ProcessingPhase.CLUSTERING,
+                        message = "No face clusters could be created."
+                    )
+                    return@launch
+                }
+
 
                 processingUiState = processingUiState.copy(
                     phase = ProcessingPhase.CLUSTERING,
@@ -322,6 +343,13 @@ class ProcessingViewModel @Inject constructor(
                     processingRepository.countAppearances(clusters)
                 }
 
+                if (appearanceCounts.isEmpty()) {
+                    handleProcessingFailure(
+                        phase = ProcessingPhase.APPEARANCE_COUNTING,
+                        message = "No face appearances could be counted."
+                    )
+                    return@launch
+                }
 
                 processingUiState = processingUiState.copy(
                     phase = ProcessingPhase.APPEARANCE_COUNTING,
@@ -390,6 +418,14 @@ class ProcessingViewModel @Inject constructor(
                 }
 
                 collageBitmap = collage
+
+                if (collage == null) {
+                    handleProcessingFailure(
+                        phase = ProcessingPhase.COLLAGE_GENERATION,
+                        message = "The collage could not be generated."
+                    )
+                    return@launch
+                }
 
                 Log.d("ProcessingViewModel", "Collage generation completed")
 
@@ -461,6 +497,33 @@ class ProcessingViewModel @Inject constructor(
     }
 
 
+    private fun handleProcessingFailure(
+        phase: ProcessingPhase,
+        message: String
+    ) {
+        processingUiState = processingUiState.copy(
+            phase = phase,
+            progress = 1f,
+            message = message,
+            error = "Process Failed",
+            isProcessing = false,
+            isCompleted = false,
+            isProcessFailed = true,
+            failureCountdown = 10
+        )
+
+        Log.e(
+            "ProcessingViewModel",
+            "Processing failed during $phase: $message"
+        )
+    }
+
+    fun updateFailureCountdown(seconds: Int) {
+        processingUiState = processingUiState.copy(
+            failureCountdown = seconds
+        )
+    }
+
     fun cancelProcessing() {
         processingJob?.cancel()
         processingJob = null
@@ -476,6 +539,36 @@ class ProcessingViewModel @Inject constructor(
         openDialog = false
 
         processingUiState = ProcessingUiState()
+    }
+
+    //> Save to Gallery
+    fun saveCollageToGallery(onResult: (Boolean) -> Unit) {
+        val bitmap = collageBitmap ?: run {
+            onResult(false)
+            return
+        }
+
+        viewModelScope.launch {
+            val uri = withContext(Dispatchers.IO) {
+                processingRepository.saveCollageToGallery(bitmap)
+            }
+            onResult(uri != null)
+        }
+    }
+
+    //> Share to Collage
+    fun getShareableCollageUri(onResult: (Uri?) -> Unit) {
+        val bitmap = collageBitmap ?: run {
+            onResult(null)
+            return
+        }
+
+        viewModelScope.launch {
+            val uri = withContext(Dispatchers.IO) {
+                processingRepository.getShareableCollageUri(bitmap)
+            }
+            onResult(uri)
+        }
     }
 
 }
