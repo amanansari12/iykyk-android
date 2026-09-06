@@ -13,11 +13,14 @@ import com.amanansari.iykyk.data.model.VideoMetadata
 import com.amanansari.iykyk.data.processor.AppearanceCounter
 import com.amanansari.iykyk.data.processor.BestShotSelector
 import com.amanansari.iykyk.data.processor.ClusterImageSaver
+import com.amanansari.iykyk.data.processor.CollageGenerator
 import com.amanansari.iykyk.data.processor.FaceClusterer
 import com.amanansari.iykyk.data.processor.FaceDetector
 import com.amanansari.iykyk.data.processor.FaceEmbedding
 import com.amanansari.iykyk.data.processor.FrameExtractor
 import com.amanansari.iykyk.data.processor.VideoMetadataExtractor
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import javax.inject.Inject
@@ -30,7 +33,8 @@ class ProcessingRepository @Inject constructor(
     private val faceClusterer: FaceClusterer,
     private val clusterImageSaver: ClusterImageSaver,
     private val appearanceCounter: AppearanceCounter,
-    private val bestShotSelector: BestShotSelector
+    private val bestShotSelector: BestShotSelector,
+    private val collageGenerator: CollageGenerator
 ) {
 
     //> Video Metadata Extractor
@@ -42,7 +46,7 @@ class ProcessingRepository @Inject constructor(
     }
 
     //> Frame Extractor
-    fun extractFrames(
+     suspend fun extractFrames(
         uri: Uri,
         durationMs: Long,
         intervalMs: Long = 200L,
@@ -98,7 +102,9 @@ class ProcessingRepository @Inject constructor(
 
         val detectedFaces = mutableListOf<DetectedFace>()
 
-        frames.forEachIndexed { index, frame ->
+        for ((index, frame) in frames.withIndex()) {
+
+            currentCoroutineContext().ensureActive()
 
             val timestampMs = index * intervalMs
 
@@ -123,7 +129,7 @@ class ProcessingRepository @Inject constructor(
 
     //> step 4 - Face Embedding
 
-    fun generateEmbeddings(
+    suspend fun generateEmbeddings(
         frames: List<Bitmap>,
         detectedFaces: List<DetectedFace>,
         intervalMs: Long = 200L,
@@ -132,12 +138,14 @@ class ProcessingRepository @Inject constructor(
 
         val results = mutableListOf<FaceEmbeddingResult>()
 
-        detectedFaces.forEachIndexed { index, detectedFace ->
+        for ((index, detectedFace) in detectedFaces.withIndex()) {
+
+            currentCoroutineContext().ensureActive()
 
             val frameIndex =
                 (detectedFace.timestampMs / intervalMs).toInt()
 
-            val frame = frames.getOrNull(frameIndex) ?: return@forEachIndexed
+            val frame = frames.getOrNull(frameIndex) ?: continue
 
             val embeddingResult = faceEmbedding.generateEmbedding(
                 bitmap = frame,
@@ -220,7 +228,14 @@ class ProcessingRepository @Inject constructor(
     }
 
 
+    //> Save Selected Images to Cache
     fun saveSelectedFaces(personResults: List<PersonResult>) {
         clusterImageSaver.saveSelectedFaces(personResults)
+    }
+
+    //> Collage Generation
+
+    fun generateCollage(personResults: List<PersonResult>): Bitmap {
+        return collageGenerator.generateCollage(personResults)
     }
 }

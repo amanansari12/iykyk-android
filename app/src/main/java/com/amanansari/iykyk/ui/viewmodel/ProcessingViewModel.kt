@@ -1,6 +1,5 @@
 package com.amanansari.iykyk.ui.viewmodel
 
-import android.R.attr.bitmap
 import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Log
@@ -18,9 +17,11 @@ import com.amanansari.iykyk.data.model.VideoMetadata
 import com.amanansari.iykyk.data.repository.ProcessingRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
 
 @HiltViewModel
 class ProcessingViewModel @Inject constructor(
@@ -73,11 +74,19 @@ class ProcessingViewModel @Inject constructor(
     var personResults: List<PersonResult> = emptyList()
         private set
 
+    var processingJob: Job? = null
+        private set
+
+    var collageBitmap: Bitmap? = null
+        private set
+
     fun startProcessing(){
 
         val uri = selectedUri ?: return
 
-        viewModelScope.launch {
+        processingJob?.cancel()
+
+        processingJob = viewModelScope.launch {
 
             //> Phase 1 - Metadata Extraction
             Log.d("ProcessingViewModel", "Starting metadata extraction")
@@ -112,7 +121,7 @@ class ProcessingViewModel @Inject constructor(
                     phase = ProcessingPhase.METADATA_EXTRACTION,
                     progress = 1f,
                     message = "Video metadata extracted",
-                    isProcessing = false
+                    isProcessing = true
                 )
 
                 Log.d(
@@ -164,6 +173,15 @@ class ProcessingViewModel @Inject constructor(
                 //> Phase 2 - Frame Extraction Complete
 
                 //> Phase 3 - Face Detection
+
+                processingUiState = ProcessingUiState(
+                    phase = ProcessingPhase.FACE_DETECTION,
+                    progress = 0f,
+                    message = "Detecting faces across extracted frames...",
+                    isProcessing = true
+                )
+
+
                 val detectedFaces = processingRepository.detectFacesInFrames(
                     frames = extractedFrames,
                     intervalMs = 200L,
@@ -171,7 +189,8 @@ class ProcessingViewModel @Inject constructor(
 
                         processingUiState = processingUiState.copy(
                             progress = progress,
-                            message = message
+                            message = message,
+                            isProcessing = true
                         )
 
                         Log.d(
@@ -344,26 +363,6 @@ class ProcessingViewModel @Inject constructor(
                     )
                 }
 
-                processingUiState = processingUiState.copy(
-                    phase = ProcessingPhase.BEST_SHOT_SELECTION,
-                    progress = 1f,
-                    message = "Best shots selected"
-                )
-
-                //> Phase 7 - Best Shot Selection Completed
-
-                Log.d(
-                    "ProcessingViewModel",
-                    "Selected ${personResults.size} representative faces"
-                )
-
-                personResults.forEach { person ->
-                    Log.d(
-                        "ProcessingViewModel",
-                        "Cluster ${person.clusterId}: appearances=${person.appearanceCount}"
-                    )
-                }
-
                 withContext(Dispatchers.IO) {
                     processingRepository.saveSelectedFaces(personResults)
                 }
@@ -374,7 +373,44 @@ class ProcessingViewModel @Inject constructor(
                     message = "Best shots selected"
                 )
 
+                //> Phase 7 - Best Shot Selection Completed
 
+                //> Phase 8 - Collage Generation
+
+                processingUiState = processingUiState.copy(
+                    phase = ProcessingPhase.COLLAGE_GENERATION,
+                    progress = 0f,
+                    message = "Generating collage..."
+                )
+
+                Log.d("ProcessingViewModel", "Starting collage generation")
+
+                val collage = withContext(Dispatchers.Default) {
+                    processingRepository.generateCollage(personResults)
+                }
+
+                collageBitmap = collage
+
+                Log.d("ProcessingViewModel", "Collage generation completed")
+
+                processingUiState = processingUiState.copy(
+                    phase = ProcessingPhase.COMPLETED,
+                    progress = 1f,
+                    message = "Collage ready",
+                    isProcessing = false,
+                    isCompleted = true
+                )
+
+                //> Phase 8 - Collage Generation Completed
+
+            }
+            catch (e: CancellationException) {
+                Log.d(
+                    "ProcessingViewModel",
+                    "Video processing cancelled"
+                )
+
+                throw e
             }
             catch (e : Exception){
                 val failedPhase = processingUiState.phase
@@ -404,6 +440,9 @@ class ProcessingViewModel @Inject constructor(
                         ProcessingPhase.BEST_SHOT_SELECTION ->
                             "Failed to select best shots"
 
+                        ProcessingPhase.COLLAGE_GENERATION ->
+                            "Failed to generate the collage"
+
                         else ->
                             "Video processing failed"
                     }
@@ -417,13 +456,26 @@ class ProcessingViewModel @Inject constructor(
             }
 
 
-
-
-
-
-
         }
 
+    }
+
+
+    fun cancelProcessing() {
+        processingJob?.cancel()
+        processingJob = null
+
+        videoMetadata = null
+        extractedFrames = emptyList()
+        embeddingResults = emptyList()
+        faceClusters = emptyList()
+        appearanceCounts = emptyMap()
+        personResults = emptyList()
+
+        selectedUri = null
+        openDialog = false
+
+        processingUiState = ProcessingUiState()
     }
 
 }

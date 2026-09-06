@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 
 class FrameExtractor @Inject constructor(
@@ -12,7 +14,7 @@ class FrameExtractor @Inject constructor(
 )
 {
 
-    fun extractFrames(
+    suspend fun extractFrames(
         videoUri: Uri,
         durationMs: Long,
         intervalMs: Long = 200L,
@@ -29,6 +31,8 @@ class FrameExtractor @Inject constructor(
             var timestampMs = 0L
 
             while(timestampMs < durationMs){
+
+                currentCoroutineContext().ensureActive()
 
                 val frame = retriever.getFrameAtTime(
                     timestampMs * 1000,
