@@ -70,6 +70,8 @@ fun NavGraph(){
                 showBackButton = showBackButton,
                 onBackClick = {
                     if (isProcessingScreen || isResultsScreen) {
+
+                        processingViewModel.cancelProcessing()
                         navController.navigate(Home) {
                             popUpTo(Home) {
                                 inclusive = false
