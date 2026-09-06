@@ -13,6 +13,14 @@
 
 ---
 
+#Demo Video
+
+
+| Demo Video | Link |
+|---|---|
+| Video | `https://drive.google.com/drive/folders/1ThF6_1RWKCIgXO14JP8FXHNasdGEH7AE` |
+---
+
 ## What it does
 
 1. Pick a portrait video from your gallery.
@@ -272,7 +280,7 @@ No `.env` files, API keys, or backend setup required — it just runs.
 
 | Channel | Link |
 |---|---|
-| Drive | `https://drive.google.com/drive/folders/1SFeS08KWiH0DBl3ua57C68plEhBW1xP2` |
+| Drive | `https://drive.google.com/drive/folders/1ThF6_1RWKCIgXO14JP8FXHNasdGEH7AE` |
 | Direct APK download | `https://github.com/amanansari12/iykyk-android/releases/tag/iykyk-android-app_v1.0` |
 
 ---
