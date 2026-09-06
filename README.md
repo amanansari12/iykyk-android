@@ -272,8 +272,8 @@ No `.env` files, API keys, or backend setup required — it just runs.
 
 | Channel | Link |
 |---|---|
-| Google Play | `<ADD PLAY STORE LISTING LINK HERE>` |
-| Direct APK download | `<ADD APK DOWNLOAD / RELEASES LINK HERE>` |
+| Drive | `https://drive.google.com/drive/folders/1SFeS08KWiH0DBl3ua57C68plEhBW1xP2` |
+| Direct APK download | `https://github.com/amanansari12/iykyk-android/releases/tag/iykyk-android-app_v1.0` |
 
 ---
 
