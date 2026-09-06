@@ -9,7 +9,7 @@
 
 | Home | Processing | Result | Saved Collages |
 |---|---|---|---|
-| <!-- screenshot --> | <!-- screenshot --> | <!-- screenshot --> | <!-- screenshot --> |
+| <img src="./screenshot/Home_Screen.png" width="300">| <img src="./screenshot/Processing_Screen.png" width="300">| <img src="./screenshot/Result_Screen.png" width="300"> | <img src="./screenshot/Saved_Screen.png" width="300"> |
 
 ---
 
