@@ -4,11 +4,14 @@ import android.graphics.Bitmap
 import com.google.mlkit.vision.face.Face
 import android.net.Uri
 import android.util.Log
+import com.amanansari.iykyk.data.model.ClusteringResult
 import com.amanansari.iykyk.data.model.DetectedFace
 import com.amanansari.iykyk.data.model.FaceCluster
 import com.amanansari.iykyk.data.model.FaceEmbeddingResult
+import com.amanansari.iykyk.data.model.PersonResult
 import com.amanansari.iykyk.data.model.VideoMetadata
 import com.amanansari.iykyk.data.processor.AppearanceCounter
+import com.amanansari.iykyk.data.processor.BestShotSelector
 import com.amanansari.iykyk.data.processor.ClusterImageSaver
 import com.amanansari.iykyk.data.processor.FaceClusterer
 import com.amanansari.iykyk.data.processor.FaceDetector
@@ -27,6 +30,7 @@ class ProcessingRepository @Inject constructor(
     private val faceClusterer: FaceClusterer,
     private val clusterImageSaver: ClusterImageSaver,
     private val appearanceCounter: AppearanceCounter,
+    private val bestShotSelector: BestShotSelector
 ) {
 
     //> Video Metadata Extractor
@@ -175,20 +179,6 @@ class ProcessingRepository @Inject constructor(
 
         val clusters = faceClusterer.cluster(orderedResults)
 
-        val appearanceCounts = clusters.associate { cluster ->
-            cluster.id to appearanceCounter.countAppearances(cluster)
-        }
-
-        appearanceCounts.forEach { (clusterId, count) ->
-            Log.d(
-                "AppearanceCounter",
-                "Cluster $clusterId → $count appearances"
-            )
-        }
-
-        //! Temp
-//        faceClusterer.logClusterPairStatistics(clusters)
-
         faceClusterer.logMemberSimilarities(clusters)
         faceClusterer.logClusterTimeline(clusters)
         faceClusterer.logClusterBoundingBoxes(clusters)
@@ -200,5 +190,37 @@ class ProcessingRepository @Inject constructor(
 
         return clusters
 
+    }
+
+    //> Appearance Counting
+
+    fun countAppearances(
+        clusters: List<FaceCluster>
+    ): Map<Int, Int> {
+
+        return clusters.associate { cluster ->
+            cluster.id to appearanceCounter.countAppearances(cluster)
+        }
+    }
+
+    //> Building PersonResult
+
+    fun buildPersonResults(
+        frames: List<Bitmap>,
+        clusters: List<FaceCluster>,
+        appearanceCounts: Map<Int, Int>,
+        intervalMs: Long = 200L
+    ): List<PersonResult> = clusters.mapNotNull { cluster ->
+        bestShotSelector.buildPersonResult(
+            cluster = cluster,
+            frames = frames,
+            appearanceCount = appearanceCounts[cluster.id] ?: 0,
+            intervalMs = intervalMs
+        )
+    }
+
+
+    fun saveSelectedFaces(personResults: List<PersonResult>) {
+        clusterImageSaver.saveSelectedFaces(personResults)
     }
 }

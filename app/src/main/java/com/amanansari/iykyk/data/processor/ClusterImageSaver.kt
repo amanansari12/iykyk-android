@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
 import com.amanansari.iykyk.data.model.FaceCluster
+import com.amanansari.iykyk.data.model.PersonResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import javax.inject.Inject
@@ -82,4 +83,43 @@ class ClusterImageSaver @Inject constructor(
             crop.recycle()
         }
     }
+
+    fun saveSelectedFaces(
+        personResults: List<PersonResult>
+    ) {
+        val outputDir = File(context.cacheDir, "selected_faces")
+
+        Log.d(
+            "ClusterImageSaver",
+            "Selected faces output directory = ${outputDir.absolutePath}"
+        )
+
+        if (!outputDir.exists()) {
+            outputDir.mkdirs()
+        }
+
+        personResults.forEach { person ->
+
+            val outputFile = File(
+                outputDir,
+                "person_${person.clusterId}_appearances_${person.appearanceCount}.jpg"
+            )
+
+            outputFile.outputStream().use { outputStream ->
+                person.representativeFace.compress(
+                    Bitmap.CompressFormat.JPEG,
+                    95,
+                    outputStream
+                )
+            }
+
+            Log.d(
+                "ClusterImageSaver",
+                "Saved selected face for cluster ${person.clusterId} -> " +
+                        "${outputFile.absolutePath}"
+            )
+        }
+    }
+
+
 }

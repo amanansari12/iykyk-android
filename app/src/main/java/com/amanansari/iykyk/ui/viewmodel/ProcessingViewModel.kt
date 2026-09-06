@@ -11,6 +11,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.amanansari.iykyk.data.model.FaceCluster
 import com.amanansari.iykyk.data.model.FaceEmbeddingResult
+import com.amanansari.iykyk.data.model.PersonResult
 import com.amanansari.iykyk.data.model.ProcessingPhase
 import com.amanansari.iykyk.data.model.ProcessingUiState
 import com.amanansari.iykyk.data.model.VideoMetadata
@@ -34,10 +35,6 @@ class ProcessingViewModel @Inject constructor(
 
     var processingUiState by mutableStateOf<ProcessingUiState>(ProcessingUiState())
         private set
-
-    var appearanceCounts: Map<Int, Int> = emptyMap()
-        private set
-
 
     fun updateUri(uri: Uri?){
         this.selectedUri = uri
@@ -68,6 +65,12 @@ class ProcessingViewModel @Inject constructor(
         private set
 
     var faceClusters: List<FaceCluster> = emptyList()
+        private set
+
+    var appearanceCounts: Map<Int, Int> = emptyMap()
+        private set
+
+    var personResults: List<PersonResult> = emptyList()
         private set
 
     fun startProcessing(){
@@ -251,12 +254,20 @@ class ProcessingViewModel @Inject constructor(
 //                    processingRepository.clusterFaces(embeddingResults)
 //                }
 
-                faceClusters = withContext(Dispatchers.Default) {
+                processingUiState = processingUiState.copy(
+                    phase = ProcessingPhase.CLUSTERING,
+                    progress = 0f,
+                    message = "Clustering faces..."
+                )
+
+                val clusters = withContext(Dispatchers.Default) {
                     processingRepository.clusterFaces(
                         frames = extractedFrames,
                         embeddingResults = embeddingResults
                     )
                 }
+
+                faceClusters = clusters
 
                 Log.d(
                     "ProcessingViewModel",
@@ -271,6 +282,97 @@ class ProcessingViewModel @Inject constructor(
                 }
 
 
+                processingUiState = processingUiState.copy(
+                    phase = ProcessingPhase.CLUSTERING,
+                    progress = 1f,
+                    message = "Face clustering completed"
+                )
+
+
+                //> Phase 5 - Face Clustering Completed
+
+                //> Phase 6 - Appearance Counting
+
+                processingUiState = processingUiState.copy(
+                    phase = ProcessingPhase.APPEARANCE_COUNTING,
+                    progress = 0f,
+                    message = "Counting appearances..."
+                )
+
+                appearanceCounts = withContext(Dispatchers.Default) {
+                    processingRepository.countAppearances(clusters)
+                }
+
+
+                processingUiState = processingUiState.copy(
+                    phase = ProcessingPhase.APPEARANCE_COUNTING,
+                    progress = 1f,
+                    message = "Appearance counting completed"
+                )
+
+                //> Phase 6 - Appearance Counting Completed
+
+                //> Phase 7 - Best Shot Selection
+
+                processingUiState = processingUiState.copy(
+                    phase = ProcessingPhase.BEST_SHOT_SELECTION,
+                    progress = 0f,
+                    message = "Selecting best shots..."
+                )
+
+                Log.d("ProcessingViewModel", "Starting best shot selection")
+
+                val results = withContext(Dispatchers.Default) {
+                    processingRepository.buildPersonResults(
+                        frames = extractedFrames,
+                        clusters = clusters,
+                        appearanceCounts = appearanceCounts
+                    )
+                }
+
+                personResults = results
+
+                Log.d(
+                    "ProcessingViewModel",
+                    "Selected ${personResults.size} representative faces"
+                )
+
+                personResults.forEach { person ->
+                    Log.d(
+                        "ProcessingViewModel",
+                        "Cluster ${person.clusterId}: appearances=${person.appearanceCount}"
+                    )
+                }
+
+                processingUiState = processingUiState.copy(
+                    phase = ProcessingPhase.BEST_SHOT_SELECTION,
+                    progress = 1f,
+                    message = "Best shots selected"
+                )
+
+                //> Phase 7 - Best Shot Selection Completed
+
+                Log.d(
+                    "ProcessingViewModel",
+                    "Selected ${personResults.size} representative faces"
+                )
+
+                personResults.forEach { person ->
+                    Log.d(
+                        "ProcessingViewModel",
+                        "Cluster ${person.clusterId}: appearances=${person.appearanceCount}"
+                    )
+                }
+
+                withContext(Dispatchers.IO) {
+                    processingRepository.saveSelectedFaces(personResults)
+                }
+
+                processingUiState = processingUiState.copy(
+                    phase = ProcessingPhase.BEST_SHOT_SELECTION,
+                    progress = 1f,
+                    message = "Best shots selected"
+                )
 
 
             }
@@ -289,6 +391,18 @@ class ProcessingViewModel @Inject constructor(
 
                         ProcessingPhase.FACE_DETECTION ->
                             "Failed to detect faces"
+
+                        ProcessingPhase.FACE_EMBEDDING ->
+                            "Failed to generate face embeddings"
+
+                        ProcessingPhase.CLUSTERING ->
+                            "Failed to cluster faces"
+
+                        ProcessingPhase.APPEARANCE_COUNTING ->
+                            "Failed to count appearances"
+
+                        ProcessingPhase.BEST_SHOT_SELECTION ->
+                            "Failed to select best shots"
 
                         else ->
                             "Video processing failed"
