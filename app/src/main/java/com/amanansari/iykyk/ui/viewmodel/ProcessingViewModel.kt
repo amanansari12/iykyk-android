@@ -342,7 +342,9 @@ class ProcessingViewModel @Inject constructor(
                 )
 
                 appearanceCounts = withContext(Dispatchers.Default) {
-                    processingRepository.countAppearances(clusters)
+                    processingRepository.countAppearances(
+                        clusters
+                    )
                 }
 
                 if (appearanceCounts.isEmpty()) {
