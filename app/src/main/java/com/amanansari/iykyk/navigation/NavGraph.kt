@@ -24,6 +24,7 @@ import com.amanansari.iykyk.ui.theme.Background
 import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.amanansari.iykyk.ui.screen.ResultScreen
+import com.amanansari.iykyk.ui.screen.SavedCollagesScreen
 import com.amanansari.iykyk.ui.viewmodel.ProcessingViewModel
 
 @Composable
@@ -41,6 +42,7 @@ fun NavGraph(){
         currentDestination?.hasRoute<Home>() == true -> "HomeScreen"
         currentDestination?.hasRoute<Processing>() == true -> "Processing"
         currentDestination?.hasRoute<Results>() == true -> "Results"
+        currentDestination?.hasRoute<SavedCollages>() == true -> "Saved"
         else -> ""
     }
 
@@ -49,8 +51,14 @@ fun NavGraph(){
 
     val isResultsScreen = currentDestination?.hasRoute<Results>() == true
 
+    val isHomeScreen = currentDestination?.hasRoute<Home>() == true
+
     val showBackButton =
         currentDestination?.hasRoute<Home>() != true
+
+    // The Saved-library icon only lives on Home and Results, per the spec —
+    // hidden during Processing and on the Saved screen itself.
+    val showSavedIcon = isHomeScreen || isResultsScreen
 
 
     Scaffold(
@@ -70,6 +78,12 @@ fun NavGraph(){
                         }
                     } else {
                         navController.popBackStack()
+                    }
+                },
+                showSavedIcon = showSavedIcon,
+                onSavedClick = {
+                    navController.navigate(SavedCollages) {
+                        launchSingleTop = true
                     }
                 }
             )
@@ -128,6 +142,12 @@ fun NavGraph(){
                             launchSingleTop = true
                         }
                     },)
+            }
+
+            composable<SavedCollages> {
+                SavedCollagesScreen(
+                    viewModel = hiltViewModel()
+                )
             }
 
         }

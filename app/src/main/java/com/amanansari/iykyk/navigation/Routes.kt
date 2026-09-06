@@ -1,6 +1,5 @@
 package com.amanansari.iykyk.navigation
 
-import android.net.Uri
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -14,3 +13,6 @@ data class Processing(
 
 @Serializable
 object Results
+
+@Serializable
+object SavedCollages

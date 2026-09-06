@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBackIosNew
+import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,7 +25,9 @@ import com.amanansari.iykyk.ui.theme.Primary
 fun TopBar(
     title: String,
     showBackButton: Boolean,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    showSavedIcon: Boolean = false,
+    onSavedClick: () -> Unit = {}
 ){
     Box(
         modifier = Modifier
@@ -47,7 +50,7 @@ fun TopBar(
         Column(
             modifier = Modifier.align(
                 alignment = if (showBackButton) {
-                Alignment.Center
+                    Alignment.Center
                 } else {
                     Alignment.CenterStart
                 }),
@@ -68,6 +71,15 @@ fun TopBar(
             )
         }
 
+        if (showSavedIcon) {
+            Icon(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .clickable { onSavedClick() },
+                imageVector = Icons.Outlined.CollectionsBookmark,
+                contentDescription = "Saved collages"
+            )
+        }
 
     }
 }

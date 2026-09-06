@@ -80,5 +80,10 @@ dependencies {
     // Coroutines Play Services
     implementation(libs.kotlinx.coroutines.play.services)
 
+    // Room (in-app Saved Collages library)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+
     implementation("com.google.ai.edge.litert:litert:1.4.2")
 }

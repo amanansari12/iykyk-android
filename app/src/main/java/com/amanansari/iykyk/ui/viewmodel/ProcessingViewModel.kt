@@ -15,6 +15,7 @@ import com.amanansari.iykyk.data.model.ProcessingPhase
 import com.amanansari.iykyk.data.model.ProcessingUiState
 import com.amanansari.iykyk.data.model.VideoMetadata
 import com.amanansari.iykyk.data.repository.ProcessingRepository
+import com.amanansari.iykyk.data.repository.SavedCollageRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,7 +26,8 @@ import kotlin.coroutines.cancellation.CancellationException
 
 @HiltViewModel
 class ProcessingViewModel @Inject constructor(
-    val processingRepository: ProcessingRepository
+    val processingRepository: ProcessingRepository,
+    private val savedCollageRepository: SavedCollageRepository
 
 ) : ViewModel() {
 
@@ -91,7 +93,7 @@ class ProcessingViewModel @Inject constructor(
 
             //> Phase 1 - Metadata Extraction
             Log.d("ProcessingViewModel", "Starting metadata extraction")
-             processingUiState = ProcessingUiState(
+            processingUiState = ProcessingUiState(
                 phase = ProcessingPhase.METADATA_EXTRACTION,
                 progress = 0f,
                 message = "Reading video metadata...",
@@ -542,6 +544,11 @@ class ProcessingViewModel @Inject constructor(
     }
 
     //> Save to Gallery
+    //> On success, this also mirrors the collage into the in-app Saved
+    //> library (Room) so it shows up behind the Saved icon. The gallery
+    //> save itself — what onResult reports — is completely unaffected;
+    //> the library mirror is a best-effort side effect that never
+    //> changes the gallery outcome the user sees.
     fun saveCollageToGallery(onResult: (Boolean) -> Unit) {
         val bitmap = collageBitmap ?: run {
             onResult(false)
@@ -552,6 +559,22 @@ class ProcessingViewModel @Inject constructor(
             val uri = withContext(Dispatchers.IO) {
                 processingRepository.saveCollageToGallery(bitmap)
             }
+
+            if (uri != null) {
+                withContext(Dispatchers.IO) {
+                    try {
+                        savedCollageRepository.saveCollage(
+                            bitmap = bitmap,
+                            identityCount = personResults.size,
+                            totalAppearances = personResults.sumOf { it.appearanceCount },
+                            videoDurationMs = videoMetadata?.durationMs ?: 0L
+                        )
+                    } catch (e: Exception) {
+                        Log.e("ProcessingViewModel", "Failed to save collage to library", e)
+                    }
+                }
+            }
+
             onResult(uri != null)
         }
     }
